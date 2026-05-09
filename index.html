@@ -10,7 +10,40 @@
     />
   </head>
   <body>
-    <div id="app"></div>
+    <main class="shell">
+      <section class="card">
+        <p class="eyebrow">Garmin FIT Parser</p>
+        <h1>Count messages in a .fit file</h1>
+        <p class="lede">
+          Upload a FIT activity file and this page will decode it locally in your browser.
+        </p>
+        <label class="upload-zone" for="fit-file">
+          <span class="upload-title">Choose a FIT file</span>
+          <span class="upload-copy">Tap to browse or replace the selected file.</span>
+        </label>
+        <input id="fit-file" class="file-input" type="file" accept=".fit,application/octet-stream" />
+        <section class="results" data-role="results" aria-live="polite" hidden>
+          <div class="summary-section">
+            <p class="summary-heading">Overview</p>
+            <dl class="summary-list">
+              <div>
+                <dt>File</dt>
+                <dd data-role="file-name">No file selected</dd>
+              </div>
+              <div>
+                <dt>Messages</dt>
+                <dd data-role="message-count">-</dd>
+              </div>
+              <div>
+                <dt>Status</dt>
+                <dd data-role="status">Waiting for upload</dd>
+              </div>
+            </dl>
+          </div>
+          <div data-role="summary-groups"></div>
+        </section>
+      </section>
+    </main>
     <script type="module" src="/src/main.js"></script>
   </body>
   </html>
