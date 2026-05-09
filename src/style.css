@@ -1,0 +1,137 @@
+:root {
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  color: #122029;
+  background:
+    radial-gradient(circle at top, rgba(199, 228, 220, 0.9), transparent 38%),
+    linear-gradient(180deg, #f8fbf9 0%, #edf3f0 100%);
+  line-height: 1.5;
+  font-weight: 400;
+  color-scheme: light;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+.shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.card {
+  width: min(100%, 560px);
+  padding: 28px;
+  border: 1px solid rgba(18, 32, 41, 0.08);
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 18px 60px rgba(18, 32, 41, 0.08);
+  backdrop-filter: blur(12px);
+}
+
+.eyebrow {
+  margin: 0 0 10px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #4b7c6b;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(2rem, 4vw, 2.8rem);
+  line-height: 1.05;
+}
+
+.lede {
+  margin: 14px 0 24px;
+  max-width: 40ch;
+  color: #47606b;
+}
+
+.upload-zone {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 18px;
+  border: 1.5px dashed #8eb4a5;
+  border-radius: 18px;
+  background: #f9fcfa;
+  cursor: pointer;
+}
+
+.upload-title {
+  font-weight: 700;
+}
+
+.upload-copy {
+  color: #5f747d;
+  font-size: 0.95rem;
+}
+
+.file-input {
+  width: 100%;
+  margin-top: 14px;
+}
+
+.results {
+  margin: 24px 0 0;
+  display: grid;
+  gap: 14px;
+}
+
+.results div {
+  display: grid;
+  grid-template-columns: 88px 1fr;
+  gap: 10px;
+  align-items: baseline;
+  padding-top: 14px;
+  border-top: 1px solid rgba(18, 32, 41, 0.08);
+}
+
+dt {
+  color: #5f747d;
+}
+
+dd {
+  margin: 0;
+  font-weight: 600;
+  word-break: break-word;
+}
+
+dd[data-state='error'] {
+  color: #b54141;
+}
+
+@media (max-width: 640px) {
+  .shell {
+    padding: 16px;
+  }
+
+  .card {
+    padding: 22px;
+    border-radius: 20px;
+  }
+
+  .results div {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+}
