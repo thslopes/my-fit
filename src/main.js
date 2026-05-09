@@ -197,7 +197,7 @@ class FitUploadApp {
   }
 
   createSummaryItem(label, value, formatter = (currentValue) => String(currentValue)) {
-    if (value == null || (typeof value === 'number' && Number.isNaN(value))) {
+    if ((value === null || value === undefined) || (typeof value === 'number' && Number.isNaN(value))) {
       return null;
     }
 
