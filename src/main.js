@@ -34,10 +34,6 @@ class FitDecoderService {
 
     const { messages, errors } = decoder.read();
 
-    for (const messagestream of Object.values(messages)) {
-      console.log(messagestream);
-    }
-
     if (errors.length > 0) {
       throw new Error(errors[0].message ?? 'The FIT file could not be decoded.');
     }
@@ -185,8 +181,8 @@ class FitUploadApp {
       {
         title: 'Cadence',
         items: [
-          this.createSummaryItem('Average Running Cadence', summary.avgRunningCadence*2, (value) => `${value} spm`),
-          this.createSummaryItem('Maximum Running Cadence', summary.maxRunningCadence*2, (value) => `${value} spm`),
+          this.createSummaryItem('Average Running Cadence', summary.avgRunningCadence, (value) => `${value * 2} spm`),
+          this.createSummaryItem('Maximum Running Cadence', summary.maxRunningCadence, (value) => `${value * 2} spm`),
         ].filter(Boolean),
       },
       {
