@@ -1,3 +1,3 @@
 # my-fit
 
-GitHub: https://github.com/thslopes/my-fit
+GitHub Pages: https://thslopes.github.io/my-fit/
