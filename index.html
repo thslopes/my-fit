@@ -41,6 +41,36 @@
             </dl>
           </div>
           <div data-role="summary-groups"></div>
+          <section class="summary-section interval-section">
+            <p class="summary-heading">Intervals</p>
+            <form class="interval-form" data-role="interval-form">
+              <label class="field-group">
+                <span>Interval Name</span>
+                <input
+                  id="interval-name"
+                  name="interval-name"
+                  type="text"
+                  placeholder="Easy warmup"
+                  data-role="interval-name"
+                />
+              </label>
+              <label class="field-group">
+                <span>Time in Seconds</span>
+                <input
+                  id="interval-seconds"
+                  name="interval-seconds"
+                  type="number"
+                  min="1"
+                  step="1"
+                  placeholder="300"
+                  data-role="interval-seconds"
+                />
+              </label>
+              <button type="submit" class="primary-button">Add interval</button>
+            </form>
+            <p class="interval-feedback" data-role="interval-feedback">Add intervals for the loaded activity.</p>
+            <div class="interval-list" data-role="interval-list"></div>
+          </section>
         </section>
       </section>
     </main>
