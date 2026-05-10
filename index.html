@@ -41,6 +41,35 @@
             </dl>
           </div>
           <div data-role="summary-groups"></div>
+          <section class="summary-section chart-section" data-role="heart-rate-section" hidden>
+            <div class="chart-header">
+              <p class="summary-heading">Heart Rate</p>
+              <p class="chart-caption" data-role="heart-rate-caption">No heart rate data available.</p>
+            </div>
+            <div class="chart-surface" data-role="heart-rate-chart"></div>
+          </section>
+          <section class="summary-section zones-section">
+            <p class="summary-heading">Training Zones</p>
+            <form class="zones-form" data-role="zones-form">
+              <label class="field-group">
+                <span>Z1 Top Limit</span>
+                <input type="number" min="1" step="1" placeholder="120" data-role="zone-z1" />
+              </label>
+              <label class="field-group">
+                <span>Z2 Top Limit</span>
+                <input type="number" min="1" step="1" placeholder="140" data-role="zone-z2" />
+              </label>
+              <label class="field-group">
+                <span>Z3 Top Limit</span>
+                <input type="number" min="1" step="1" placeholder="160" data-role="zone-z3" />
+              </label>
+              <label class="field-group">
+                <span>Z4 Top Limit</span>
+                <input type="number" min="1" step="1" placeholder="175" data-role="zone-z4" />
+              </label>
+            </form>
+            <p class="zones-feedback" data-role="zones-feedback">Enter all four zone limits to draw them on the chart.</p>
+          </section>
           <section class="summary-section interval-section">
             <p class="summary-heading">Intervals</p>
             <form class="interval-form" data-role="interval-form">

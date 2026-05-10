@@ -1,6 +1,8 @@
 import { Decoder, Stream } from '@garmin/fitsdk';
 import './style.css';
 
+const TRAINING_ZONES_STORAGE_KEY = 'my-fit-training-zones';
+
 class FitInterpreter {
   constructor(messages) {
     this.messages = messages;
@@ -128,6 +130,16 @@ class FitInterpreter {
 
     return this.intervals;
   }
+
+  getHeartRateSeries() {
+    const heartRateMessages = this.messages.filter((message) => message.heartRate != null);
+
+    return heartRateMessages.map((message, index) => ({
+      heartRate: message.heartRate,
+      elapsedSeconds: index,
+      timestamp: message.timestamp ?? null,
+    }));
+  }
 }
 
 class FitDecoderService {
@@ -153,6 +165,8 @@ class FitUploadApp {
   constructor(decoderService, interpreter) {
     this.decoderService = decoderService;
     this.interpreter = interpreter;
+    this.trainingZones = null;
+    this.currentHeartRateSeries = [];
     this.resultsElement = document.querySelector('[data-role="results"]');
     this.summaryGroupsElement = document.querySelector('[data-role="summary-groups"]');
     this.statusElement = null;
@@ -164,6 +178,12 @@ class FitUploadApp {
     this.intervalFeedbackElement = null;
     this.intervalListElement = null;
     this.copySummaryButtonElement = null;
+    this.zonesFormElement = null;
+    this.zonesFeedbackElement = null;
+    this.zoneInputs = null;
+    this.heartRateSectionElement = null;
+    this.heartRateChartElement = null;
+    this.heartRateCaptionElement = null;
   }
 
   initialize() {
@@ -176,6 +196,17 @@ class FitUploadApp {
     this.intervalFeedbackElement = document.querySelector('[data-role="interval-feedback"]');
     this.intervalListElement = document.querySelector('[data-role="interval-list"]');
     this.copySummaryButtonElement = document.querySelector('[data-role="copy-summary-button"]');
+    this.zonesFormElement = document.querySelector('[data-role="zones-form"]');
+    this.zonesFeedbackElement = document.querySelector('[data-role="zones-feedback"]');
+    this.zoneInputs = {
+      z1: document.querySelector('[data-role="zone-z1"]'),
+      z2: document.querySelector('[data-role="zone-z2"]'),
+      z3: document.querySelector('[data-role="zone-z3"]'),
+      z4: document.querySelector('[data-role="zone-z4"]'),
+    };
+    this.heartRateSectionElement = document.querySelector('[data-role="heart-rate-section"]');
+    this.heartRateChartElement = document.querySelector('[data-role="heart-rate-chart"]');
+    this.heartRateCaptionElement = document.querySelector('[data-role="heart-rate-caption"]');
 
     const fileInput = document.querySelector('#fit-file');
     fileInput.addEventListener('change', (event) => {
@@ -191,6 +222,14 @@ class FitUploadApp {
       this.handleIntervalSubmit(event);
     });
 
+    Object.values(this.zoneInputs).forEach((input) => {
+      input.addEventListener('input', () => {
+        this.handleZonesInput();
+      });
+    });
+
+    this.restoreTrainingZones();
+
     this.copySummaryButtonElement.addEventListener('click', () => {
       this.handleCopySummary().catch((e) => {
         this.updateIntervalFeedback('Unable to copy the summary to the clipboard.', true);
@@ -199,6 +238,75 @@ class FitUploadApp {
     });
 
     this.renderIntervals();
+  }
+
+  handleZonesInput() {
+    this.persistTrainingZones();
+
+    const zones = {
+      z1: this.parseZoneInput(this.zoneInputs.z1.value),
+      z2: this.parseZoneInput(this.zoneInputs.z2.value),
+      z3: this.parseZoneInput(this.zoneInputs.z3.value),
+      z4: this.parseZoneInput(this.zoneInputs.z4.value),
+    };
+
+    if (Object.values(zones).every((value) => value == null)) {
+      this.trainingZones = null;
+      this.updateZonesFeedback('Enter all four zone limits to draw them on the chart.');
+      this.renderHeartRateChart(this.currentHeartRateSeries);
+      return;
+    }
+
+    if (Object.values(zones).some((value) => value == null)) {
+      this.trainingZones = null;
+      this.updateZonesFeedback('Enter all four zone limits to draw the zone lines.', true);
+      this.renderHeartRateChart(this.currentHeartRateSeries);
+      return;
+    }
+
+    if (!(zones.z1 < zones.z2 && zones.z2 < zones.z3 && zones.z3 < zones.z4)) {
+      this.trainingZones = null;
+      this.updateZonesFeedback('Zone limits must be in ascending order: Z1 < Z2 < Z3 < Z4.', true);
+      this.renderHeartRateChart(this.currentHeartRateSeries);
+      return;
+    }
+
+    this.trainingZones = zones;
+    this.updateZonesFeedback(`Showing zone lines for Z1 ${zones.z1}, Z2 ${zones.z2}, Z3 ${zones.z3}, Z4 ${zones.z4}.`);
+    this.renderHeartRateChart(this.currentHeartRateSeries);
+  }
+
+  persistTrainingZones() {
+    const storedZones = {
+      z1: this.zoneInputs.z1.value,
+      z2: this.zoneInputs.z2.value,
+      z3: this.zoneInputs.z3.value,
+      z4: this.zoneInputs.z4.value,
+    };
+
+    localStorage.setItem(TRAINING_ZONES_STORAGE_KEY, JSON.stringify(storedZones));
+  }
+
+  restoreTrainingZones() {
+    const savedZones = localStorage.getItem(TRAINING_ZONES_STORAGE_KEY);
+
+    if (!savedZones) {
+      return;
+    }
+
+    try {
+      const parsedZones = JSON.parse(savedZones);
+
+      Object.entries(this.zoneInputs).forEach(([zoneName, input]) => {
+        if (typeof parsedZones[zoneName] === 'string') {
+          input.value = parsedZones[zoneName];
+        }
+      });
+
+      this.handleZonesInput();
+    } catch {
+      localStorage.removeItem(TRAINING_ZONES_STORAGE_KEY);
+    }
   }
 
   async handleFileSelection(event) {
@@ -219,10 +327,12 @@ class FitUploadApp {
 
     this.interpreter = new FitInterpreter(messages);
     const summary = this.interpreter.getSummary();
+    this.currentHeartRateSeries = this.interpreter.getHeartRateSeries();
     this.clearIntervals();
 
     this.messageCountElement.textContent = String(messages.length);
     this.renderSummary(summary);
+    this.renderHeartRateChart(this.currentHeartRateSeries);
     this.updateStatus('Decoded successfully.');
   }
 
@@ -230,7 +340,9 @@ class FitUploadApp {
     this.resultsElement.hidden = true;
     this.fileNameElement.textContent = 'No file selected';
     this.messageCountElement.textContent = '-';
+    this.currentHeartRateSeries = [];
     this.clearSummary();
+    this.clearHeartRateChart();
     this.clearIntervals();
     this.updateStatus('Waiting for upload');
   }
@@ -246,6 +358,113 @@ class FitUploadApp {
 
   clearSummary() {
     this.summaryGroupsElement.innerHTML = '';
+  }
+
+  clearHeartRateChart() {
+    this.heartRateSectionElement.hidden = true;
+    this.heartRateChartElement.innerHTML = '';
+    this.heartRateCaptionElement.textContent = 'No heart rate data available.';
+  }
+
+  renderHeartRateChart(heartRateSeries) {
+    if (heartRateSeries.length === 0) {
+      this.clearHeartRateChart();
+      return;
+    }
+
+    const sampledSeries = this.sampleHeartRateSeries(heartRateSeries, 120);
+    const chartMarkup = this.buildHeartRateChartMarkup(sampledSeries, this.trainingZones);
+    const minHeartRate = Math.min(...heartRateSeries.map((point) => point.heartRate));
+    const maxHeartRate = Math.max(...heartRateSeries.map((point) => point.heartRate));
+
+    this.heartRateSectionElement.hidden = false;
+    this.heartRateChartElement.innerHTML = chartMarkup;
+    this.heartRateCaptionElement.textContent = `${heartRateSeries.length} samples, ${minHeartRate}-${maxHeartRate} bpm`;
+  }
+
+  sampleHeartRateSeries(series, targetPoints) {
+    if (series.length <= targetPoints) {
+      return series;
+    }
+
+    const sampledSeries = [];
+    const lastIndex = series.length - 1;
+
+    for (let index = 0; index < targetPoints; index += 1) {
+      const sourceIndex = Math.round((index / (targetPoints - 1)) * lastIndex);
+      sampledSeries.push(series[sourceIndex]);
+    }
+
+    return sampledSeries;
+  }
+
+  buildHeartRateChartMarkup(series, zones = null) {
+    const width = 640;
+    const height = 220;
+    const padding = { top: 16, right: 16, bottom: 28, left: 16 };
+    const values = series.map((point) => point.heartRate);
+    const minValue = Math.min(...values);
+    const maxValue = Math.max(...values);
+    const valueRange = Math.max(maxValue - minValue, 1);
+    const innerWidth = width - padding.left - padding.right;
+    const innerHeight = height - padding.top - padding.bottom;
+
+    const points = series.map((point, index) => {
+      const x = padding.left + (series.length === 1 ? innerWidth / 2 : (index / (series.length - 1)) * innerWidth);
+      const y = padding.top + ((maxValue - point.heartRate) / valueRange) * innerHeight;
+      return { x, y };
+    });
+
+    const linePath = points
+      .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`)
+      .join(' ');
+    const areaPath = `${linePath} L ${points[points.length - 1].x.toFixed(2)} ${(height - padding.bottom).toFixed(2)} L ${points[0].x.toFixed(2)} ${(height - padding.bottom).toFixed(2)} Z`;
+    const baselineY = height - padding.bottom;
+    const zoneMarkup = this.buildZoneLineMarkup({ zones, width, height, padding, minValue, maxValue, valueRange, innerHeight });
+
+    return `
+      <svg class="heart-rate-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Heart rate chart">
+        <line class="heart-rate-baseline" x1="${padding.left}" y1="${baselineY}" x2="${width - padding.right}" y2="${baselineY}"></line>
+        ${zoneMarkup}
+        <path class="heart-rate-area" d="${areaPath}"></path>
+        <path class="heart-rate-line" d="${linePath}"></path>
+        <text class="heart-rate-label" x="${padding.left}" y="${height - 8}">Start</text>
+        <text class="heart-rate-label" x="${width - padding.right}" y="${height - 8}" text-anchor="end">End</text>
+      </svg>
+    `;
+  }
+
+  buildZoneLineMarkup({ zones, width, height, padding, minValue, maxValue, valueRange, innerHeight }) {
+    if (!zones) {
+      return '';
+    }
+
+    const zoneDefinitions = [
+      { name: 'Z2', limit: zones.z1, color: '#1bd615' },
+      { name: 'Z3', limit: zones.z2, color: '#c5cf33' },
+      { name: 'Z4', limit: zones.z3, color: '#c28a27' },
+      { name: 'Z5', limit: zones.z4, color: '#b54141' },
+    ];
+
+    return zoneDefinitions
+      .filter((zone) => zone.limit >= minValue && zone.limit <= maxValue)
+      .map((zone) => {
+        const y = padding.top + ((maxValue - zone.limit) / valueRange) * innerHeight;
+        return `
+          <line class="heart-rate-zone-line" x1="${padding.left}" y1="${y.toFixed(2)}" x2="${width - padding.right}" y2="${y.toFixed(2)}" stroke="${zone.color}"></line>
+          <text class="heart-rate-label heart-rate-zone-label" x="${width - padding.right}" y="${(y - 6).toFixed(2)}" text-anchor="end" fill="${zone.color}">${zone.name} ${zone.limit}</text>
+        `;
+      })
+      .join('');
+  }
+
+  parseZoneInput(value) {
+    if (value.trim() === '') {
+      return null;
+    }
+
+    const parsedValue = Number.parseInt(value, 10);
+    return Number.isInteger(parsedValue) && parsedValue > 0 ? parsedValue : null;
   }
 
   async handleCopySummary() {
@@ -405,6 +624,11 @@ ${exportedIntervals}
   updateIntervalFeedback(message, isError = false) {
     this.intervalFeedbackElement.textContent = message;
     this.intervalFeedbackElement.dataset.state = isError ? 'error' : 'ready';
+  }
+
+  updateZonesFeedback(message, isError = false) {
+    this.zonesFeedbackElement.textContent = message;
+    this.zonesFeedbackElement.dataset.state = isError ? 'error' : 'ready';
   }
 
   renderSummary(summary) {
