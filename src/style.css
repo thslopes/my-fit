@@ -171,6 +171,21 @@ h1 {
   background: #18533f;
 }
 
+.secondary-button {
+  width: fit-content;
+  padding: 12px 18px;
+  border: 1px solid rgba(18, 32, 41, 0.12);
+  border-radius: 999px;
+  background: rgba(249, 252, 250, 0.95);
+  color: #122029;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.secondary-button:hover {
+  background: #eef5f1;
+}
+
 .interval-feedback {
   margin: 0;
   color: #5f747d;
@@ -238,6 +253,10 @@ dd[data-state='error'] {
   }
 
   .primary-button {
+    width: 100%;
+  }
+
+  .secondary-button {
     width: 100%;
   }
 

@@ -88,12 +88,42 @@ class FitInterpreter {
         currentInterval.avgStepLength = sumStepLength / currentInterval.totalSeconds;
         currentInterval.maxStepLength = maxStepLength;
 
+        sumHeartRate = 0;
+        maxHeartRate = 0;
+        sumEnhancedSpeed = 0;
+        maxEnhancedSpeed = 0;
+        sumCadence = 0;
+        maxCadence = 0;
+        sumStepLength = 0;
+        maxStepLength = 0;
+
         currentIntervalIndex++;
         if (currentIntervalIndex == this.intervals.length) {
           break;
         }
         intervalFinalSecond += this.intervals[currentIntervalIndex].totalSeconds;
       }
+    }
+
+    if (maxHeartRate > 0) {
+      let currentInterval = this.intervals[currentIntervalIndex];
+      let totalSeconds = recordCount;
+      for (let i=0; i<this.intervals.length-1; i++) {
+        totalSeconds -= this.intervals[i].totalSeconds;
+      }
+      currentInterval.avgHeartRate = sumHeartRate / totalSeconds;
+      currentInterval.maxHeartRate = maxHeartRate;
+
+      currentInterval.avgEnhancedSpeed = sumEnhancedSpeed / totalSeconds;
+      currentInterval.maxEnhancedSpeed = maxEnhancedSpeed;
+
+      currentInterval.avgCadence = sumCadence / totalSeconds;
+      currentInterval.maxCadence = maxCadence;
+
+      currentInterval.avgStepLength = sumStepLength / totalSeconds;
+      currentInterval.maxStepLength = maxStepLength;
+
+      currentInterval.totalSeconds = totalSeconds;
     }
 
     return this.intervals;
@@ -133,6 +163,7 @@ class FitUploadApp {
     this.intervalSecondsElement = null;
     this.intervalFeedbackElement = null;
     this.intervalListElement = null;
+    this.copySummaryButtonElement = null;
   }
 
   initialize() {
@@ -144,6 +175,7 @@ class FitUploadApp {
     this.intervalSecondsElement = document.querySelector('[data-role="interval-seconds"]');
     this.intervalFeedbackElement = document.querySelector('[data-role="interval-feedback"]');
     this.intervalListElement = document.querySelector('[data-role="interval-list"]');
+    this.copySummaryButtonElement = document.querySelector('[data-role="copy-summary-button"]');
 
     const fileInput = document.querySelector('#fit-file');
     fileInput.addEventListener('change', (event) => {
@@ -157,6 +189,13 @@ class FitUploadApp {
 
     this.intervalFormElement.addEventListener('submit', (event) => {
       this.handleIntervalSubmit(event);
+    });
+
+    this.copySummaryButtonElement.addEventListener('click', () => {
+      this.handleCopySummary().catch((e) => {
+        this.updateIntervalFeedback('Unable to copy the summary to the clipboard.', true);
+        console.error('Clipboard copy failed:', e);
+      });
     });
 
     this.renderIntervals();
@@ -207,6 +246,73 @@ class FitUploadApp {
 
   clearSummary() {
     this.summaryGroupsElement.innerHTML = '';
+  }
+
+  async handleCopySummary() {
+    if (!(this.interpreter instanceof FitInterpreter) || this.interpreter.messages == null) {
+      this.updateIntervalFeedback('Upload a FIT file before copying the summary.', true);
+      return;
+    }
+    const summary = this.interpreter.getSummary();
+    const intervals = this.interpreter.getIntervalsSummary();
+
+    const exportedIntervals = intervals.length > 0 ? intervals
+      .map((interval, index) => `
+### ${index + 1}. ${interval.name}
+ - Duration: ${this.formatSecondsDuration(interval.totalSeconds)}
+ - Average Heart Rate: ${interval.avgHeartRate != null ? `${Math.round(interval.avgHeartRate)} bpm` : '-'}
+ - Maximum Heart Rate: ${interval.maxHeartRate != null ? `${interval.maxHeartRate} bpm` : '-'}
+ - Average Speed: ${interval.avgEnhancedSpeed != null ? this.formatSpeed(interval.avgEnhancedSpeed) : '-'}
+ - Maximum Speed: ${interval.maxEnhancedSpeed != null ? this.formatSpeed(interval.maxEnhancedSpeed) : '-'}
+ - Average Cadence: ${interval.avgCadence != null ? `${Math.round(interval.avgCadence * 2)} spm` : '-'}
+ - Maximum Cadence: ${interval.maxCadence != null ? `${interval.maxCadence * 2} spm` : '-'}
+ - Average Step Length: ${interval.avgStepLength != null ? `${(interval.avgStepLength).toFixed(0)} mm` : '-'}
+ - Maximum Step Length: ${interval.maxStepLength != null ? `${(interval.maxStepLength).toFixed(0)} mm` : '-'}
+        `)
+      .join('')
+      : 'No intervals added.';
+
+    const exportData = `
+# Workout Summary
+
+### Timing
+ - Start Time: ${this.formatDateTime(summary.startTime)}
+ - End Time: ${this.formatDateTime(summary.endTime)}
+ - Duration: ${this.formatDuration(summary.duration)}
+
+### Activity
+ - Sport: ${summary.sport}
+ - Sub Sport: ${summary.subSport}
+ - Laps(km): ${summary.numLaps}
+ - Calories: ${summary.totalCalories} kcal
+
+### Heart Rate
+ - Average: ${summary.avgHeartRate} bpm
+ - Maximum: ${summary.maxHeartRate} bpm
+ - Minimum: ${summary.minHeartRate} bpm
+
+### Distance & Speed
+ - Distance: ${this.formatDistance(summary.totalDistance)}
+ - Average Speed: ${this.formatSpeed(summary.avgSpeed)}
+ - Maximum Speed: ${this.formatSpeed(summary.maxSpeed)}
+
+### Cadence
+ - Average Running Cadence: ${summary.avgRunningCadence * 2} spm
+ - Maximum Running Cadence: ${summary.maxRunningCadence * 2} spm
+ - Average Step Length: ${summary.avgStepLength.toFixed(0)} mm
+
+### Training
+ - Training Effect: ${summary.totalTrainingEffect}
+ - Anaerobic Effect: ${summary.totalAnaerobicTrainingEffect}
+ - Training Load Peak: ${summary.trainingLoadPeak}
+
+## Intervals
+
+${exportedIntervals}
+`
+
+    await navigator.clipboard.writeText(exportData);
+    this.updateIntervalFeedback('Copied summary to the clipboard.');
   }
 
   handleIntervalSubmit(event) {
