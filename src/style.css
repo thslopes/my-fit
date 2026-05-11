@@ -179,6 +179,17 @@ h1 {
   font-weight: 700;
 }
 
+.heart-rate-interval-line {
+  stroke: rgba(18, 32, 41, 0.28);
+  stroke-width: 1.5;
+  stroke-dasharray: 3 5;
+}
+
+.heart-rate-interval-label {
+  fill: #122029;
+  font-size: 10px;
+}
+
 .heart-rate-label {
   fill: #5f747d;
   font-size: 12px;
@@ -305,9 +316,9 @@ h1 {
 }
 
 .interval-items li {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
   gap: 12px;
+  width: 100%;
   padding: 12px 14px;
   border: 1px solid rgba(18, 32, 41, 0.08);
   border-radius: 14px;
@@ -352,8 +363,10 @@ dd[data-state='error'] {
     width: 100%;
   }
 
-  .interval-items li {
+  .interval-item-header,
+  .interval-metric {
     flex-direction: column;
+    align-items: flex-start;
   }
 
   .chart-surface {

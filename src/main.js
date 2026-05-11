@@ -140,6 +140,30 @@ class FitInterpreter {
       timestamp: message.timestamp ?? null,
     }));
   }
+
+  getIntervalBoundaries(totalSamples) {
+    if (!Number.isInteger(totalSamples) || totalSamples <= 1 || this.intervals.length === 0) {
+      return [];
+    }
+
+    const boundaries = [];
+    let cumulativeSamples = 0;
+
+    for (const interval of this.intervals) {
+      cumulativeSamples += interval.totalSeconds;
+
+      if (cumulativeSamples >= totalSamples) {
+        break;
+      }
+
+      boundaries.push({
+        name: interval.name,
+        sampleIndex: cumulativeSamples,
+      });
+    }
+
+    return boundaries;
+  }
 }
 
 class FitDecoderService {
@@ -373,7 +397,13 @@ class FitUploadApp {
     }
 
     const sampledSeries = this.sampleHeartRateSeries(heartRateSeries, 120);
-    const chartMarkup = this.buildHeartRateChartMarkup(sampledSeries, this.trainingZones);
+    const intervalBoundaries = this.interpreter instanceof FitInterpreter
+      ? this.interpreter.getIntervalBoundaries(heartRateSeries.length)
+      : [];
+    const chartMarkup = this.buildHeartRateChartMarkup(sampledSeries, this.trainingZones, {
+      totalSamples: heartRateSeries.length,
+      intervalBoundaries,
+    });
     const minHeartRate = Math.min(...heartRateSeries.map((point) => point.heartRate));
     const maxHeartRate = Math.max(...heartRateSeries.map((point) => point.heartRate));
 
@@ -398,10 +428,11 @@ class FitUploadApp {
     return sampledSeries;
   }
 
-  buildHeartRateChartMarkup(series, zones = null) {
+  buildHeartRateChartMarkup(series, zones = null, chartMetadata = {}) {
     const width = 640;
     const height = 220;
     const padding = { top: 16, right: 16, bottom: 28, left: 16 };
+    const { totalSamples = series.length, intervalBoundaries = [] } = chartMetadata;
     const values = series.map((point) => point.heartRate);
     const minValue = Math.min(...values);
     const maxValue = Math.max(...values);
@@ -421,11 +452,20 @@ class FitUploadApp {
     const areaPath = `${linePath} L ${points[points.length - 1].x.toFixed(2)} ${(height - padding.bottom).toFixed(2)} L ${points[0].x.toFixed(2)} ${(height - padding.bottom).toFixed(2)} Z`;
     const baselineY = height - padding.bottom;
     const zoneMarkup = this.buildZoneLineMarkup({ zones, width, height, padding, minValue, maxValue, valueRange, innerHeight });
+    const intervalMarkup = this.buildIntervalLineMarkup({
+      intervalBoundaries,
+      totalSamples,
+      width,
+      height,
+      padding,
+      innerHeight,
+    });
 
     return `
       <svg class="heart-rate-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Heart rate chart">
         <line class="heart-rate-baseline" x1="${padding.left}" y1="${baselineY}" x2="${width - padding.right}" y2="${baselineY}"></line>
         ${zoneMarkup}
+        ${intervalMarkup}
         <path class="heart-rate-area" d="${areaPath}"></path>
         <path class="heart-rate-line" d="${linePath}"></path>
         <text class="heart-rate-label" x="${padding.left}" y="${height - 8}">Start</text>
@@ -453,6 +493,22 @@ class FitUploadApp {
         return `
           <line class="heart-rate-zone-line" x1="${padding.left}" y1="${y.toFixed(2)}" x2="${width - padding.right}" y2="${y.toFixed(2)}" stroke="${zone.color}"></line>
           <text class="heart-rate-label heart-rate-zone-label" x="${width - padding.right}" y="${(y - 6).toFixed(2)}" text-anchor="end" fill="${zone.color}">${zone.name} ${zone.limit}</text>
+        `;
+      })
+      .join('');
+  }
+
+  buildIntervalLineMarkup({ intervalBoundaries, totalSamples, width, height, padding, innerHeight }) {
+    if (intervalBoundaries.length === 0 || totalSamples <= 1) {
+      return '';
+    }
+
+    return intervalBoundaries
+      .map((interval) => {
+        const x = padding.left + (interval.sampleIndex / (totalSamples - 1)) * (width - padding.left - padding.right);
+
+        return `
+          <line class="heart-rate-interval-line" x1="${x.toFixed(2)}" y1="${padding.top}" x2="${x.toFixed(2)}" y2="${(padding.top + innerHeight).toFixed(2)}"></line>
         `;
       })
       .join('');
@@ -561,6 +617,7 @@ ${exportedIntervals}
     });
     this.intervalFormElement.reset();
     this.renderIntervals();
+    this.renderHeartRateChart(this.currentHeartRateSeries);
     this.updateIntervalFeedback(`Added interval "${name}".`, false);
     this.intervalNameElement.focus();
   }
@@ -588,32 +645,42 @@ ${exportedIntervals}
         ${intervals
         .map((interval) => `
             <li>
-              <strong>${interval.name}</strong>
-              <strong>${this.formatSecondsDuration(interval.totalSeconds)}</strong>
-               -
-              <span>Average Heart Rate</span>
-              <strong>${interval.avgHeartRate != null ? `${Math.round(interval.avgHeartRate)} bpm` : '-'}</strong>
-               -
-              <span>Maximum Heart Rate</span>
-              <strong>${interval.maxHeartRate != null ? `${interval.maxHeartRate} bpm` : '-'}</strong>
-                -
-              <span>Average Speed</span>
-              <strong>${interval.avgEnhancedSpeed != null ? this.formatSpeed(interval.avgEnhancedSpeed) : '-'}</strong>
-                -
-              <span>Maximum Speed</span>
-              <strong>${interval.maxEnhancedSpeed != null ? this.formatSpeed(interval.maxEnhancedSpeed) : '-'}</strong>
-                -
-              <span>Average Cadence</span>
-              <strong>${interval.avgCadence != null ? `${Math.round(interval.avgCadence * 2)} spm` : '-'}</strong>
-                -
-              <span>Maximum Cadence</span>
-              <strong>${interval.maxCadence != null ? `${interval.maxCadence * 2} spm` : '-'}</strong>
-                -
-              <span>Average Step Length</span>
-              <strong>${interval.avgStepLength != null ? `${(interval.avgStepLength).toFixed(0)} mm` : '-'}</strong>
-                -
-              <span>Maximum Step Length</span>
-              <strong>${interval.maxStepLength != null ? `${(interval.maxStepLength).toFixed(0)} mm` : '-'}</strong>
+              <div class="interval-item-header">
+                <strong>${interval.name}</strong>
+                <strong>${this.formatSecondsDuration(interval.totalSeconds)}</strong>
+              </div>
+              <div class="interval-metric">
+                <span>Average Heart Rate:</span>
+                <strong>${interval.avgHeartRate != null ? `${Math.round(interval.avgHeartRate)} bpm` : '-'}</strong>
+              </div>
+              <div class="interval-metric">
+                <span>Maximum Heart Rate:</span>
+                <strong>${interval.maxHeartRate != null ? `${interval.maxHeartRate} bpm` : '-'}</strong>
+              </div>
+              <div class="interval-metric">
+                <span>Average Speed:</span>
+                <strong>${interval.avgEnhancedSpeed != null ? this.formatSpeed(interval.avgEnhancedSpeed) : '-'}</strong>
+              </div>
+              <div class="interval-metric">
+                <span>Maximum Speed:</span>
+                <strong>${interval.maxEnhancedSpeed != null ? this.formatSpeed(interval.maxEnhancedSpeed) : '-'}</strong>
+              </div>
+              <div class="interval-metric">
+                <span>Average Cadence:</span>
+                <strong>${interval.avgCadence != null ? `${Math.round(interval.avgCadence * 2)} spm` : '-'}</strong>
+              </div>
+              <div class="interval-metric">
+                <span>Maximum Cadence:</span>
+                <strong>${interval.maxCadence != null ? `${interval.maxCadence * 2} spm` : '-'}</strong>
+              </div>
+              <div class="interval-metric">
+                <span>Average Step Length:</span>
+                <strong>${interval.avgStepLength != null ? `${(interval.avgStepLength).toFixed(0)} mm` : '-'}</strong>
+              </div>
+              <div class="interval-metric">
+                <span>Maximum Step Length:</span>
+                <strong>${interval.maxStepLength != null ? `${(interval.maxStepLength).toFixed(0)} mm` : '-'}</strong>
+              </div>
             </li>
           `)
         .join('')}
