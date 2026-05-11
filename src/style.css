@@ -164,6 +164,18 @@ h1 {
   stroke-linejoin: round;
 }
 
+.pace-area {
+  fill: rgba(28, 91, 173, 0.14);
+}
+
+.pace-line {
+  fill: none;
+  stroke: #1c5bad;
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .heart-rate-baseline {
   stroke: rgba(18, 32, 41, 0.14);
   stroke-width: 1;

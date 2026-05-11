@@ -141,6 +141,16 @@ class FitInterpreter {
     }));
   }
 
+  getPaceSeries() {
+    const paceMessages = this.messages.filter((message) => message.enhancedSpeed != null && message.enhancedSpeed > 0);
+
+    return paceMessages.map((message, index) => ({
+      paceSecondsPerKilometer: 1000 / message.enhancedSpeed,
+      elapsedSeconds: index,
+      timestamp: message.timestamp ?? null,
+    }));
+  }
+
   getIntervalBoundaries(totalSamples) {
     if (!Number.isInteger(totalSamples) || totalSamples <= 1 || this.intervals.length === 0) {
       return [];
@@ -191,6 +201,7 @@ class FitUploadApp {
     this.interpreter = interpreter;
     this.trainingZones = null;
     this.currentHeartRateSeries = [];
+    this.currentPaceSeries = [];
     this.resultsElement = document.querySelector('[data-role="results"]');
     this.summaryGroupsElement = document.querySelector('[data-role="summary-groups"]');
     this.statusElement = null;
@@ -208,6 +219,9 @@ class FitUploadApp {
     this.heartRateSectionElement = null;
     this.heartRateChartElement = null;
     this.heartRateCaptionElement = null;
+    this.paceSectionElement = null;
+    this.paceChartElement = null;
+    this.paceCaptionElement = null;
   }
 
   initialize() {
@@ -231,6 +245,9 @@ class FitUploadApp {
     this.heartRateSectionElement = document.querySelector('[data-role="heart-rate-section"]');
     this.heartRateChartElement = document.querySelector('[data-role="heart-rate-chart"]');
     this.heartRateCaptionElement = document.querySelector('[data-role="heart-rate-caption"]');
+    this.paceSectionElement = document.querySelector('[data-role="pace-section"]');
+    this.paceChartElement = document.querySelector('[data-role="pace-chart"]');
+    this.paceCaptionElement = document.querySelector('[data-role="pace-caption"]');
 
     const fileInput = document.querySelector('#fit-file');
     fileInput.addEventListener('change', (event) => {
@@ -352,11 +369,13 @@ class FitUploadApp {
     this.interpreter = new FitInterpreter(messages);
     const summary = this.interpreter.getSummary();
     this.currentHeartRateSeries = this.interpreter.getHeartRateSeries();
+    this.currentPaceSeries = this.interpreter.getPaceSeries();
     this.clearIntervals();
 
     this.messageCountElement.textContent = String(messages.length);
     this.renderSummary(summary);
     this.renderHeartRateChart(this.currentHeartRateSeries);
+    this.renderPaceChart(this.currentPaceSeries);
     this.updateStatus('Decoded successfully.');
   }
 
@@ -365,8 +384,10 @@ class FitUploadApp {
     this.fileNameElement.textContent = 'No file selected';
     this.messageCountElement.textContent = '-';
     this.currentHeartRateSeries = [];
+    this.currentPaceSeries = [];
     this.clearSummary();
     this.clearHeartRateChart();
+    this.clearPaceChart();
     this.clearIntervals();
     this.updateStatus('Waiting for upload');
   }
@@ -390,6 +411,12 @@ class FitUploadApp {
     this.heartRateCaptionElement.textContent = 'No heart rate data available.';
   }
 
+  clearPaceChart() {
+    this.paceSectionElement.hidden = true;
+    this.paceChartElement.innerHTML = '';
+    this.paceCaptionElement.textContent = 'No pace data available.';
+  }
+
   renderHeartRateChart(heartRateSeries) {
     if (heartRateSeries.length === 0) {
       this.clearHeartRateChart();
@@ -410,6 +437,28 @@ class FitUploadApp {
     this.heartRateSectionElement.hidden = false;
     this.heartRateChartElement.innerHTML = chartMarkup;
     this.heartRateCaptionElement.textContent = `${heartRateSeries.length} samples, ${minHeartRate}-${maxHeartRate} bpm`;
+  }
+
+  renderPaceChart(paceSeries) {
+    if (paceSeries.length === 0) {
+      this.clearPaceChart();
+      return;
+    }
+
+    const sampledSeries = this.sampleHeartRateSeries(paceSeries, 120);
+    const intervalBoundaries = this.interpreter instanceof FitInterpreter
+      ? this.interpreter.getIntervalBoundaries(paceSeries.length)
+      : [];
+    const chartMarkup = this.buildPaceChartMarkup(sampledSeries, {
+      totalSamples: paceSeries.length,
+      intervalBoundaries,
+    });
+    const minPace = Math.min(...paceSeries.map((point) => point.paceSecondsPerKilometer));
+    const maxPace = Math.max(...paceSeries.map((point) => point.paceSecondsPerKilometer));
+
+    this.paceSectionElement.hidden = false;
+    this.paceChartElement.innerHTML = chartMarkup;
+    this.paceCaptionElement.textContent = `${paceSeries.length} samples, ${this.formatPaceFromSeconds(minPace)}-${this.formatPaceFromSeconds(maxPace)}`;
   }
 
   sampleHeartRateSeries(series, targetPoints) {
@@ -468,6 +517,50 @@ class FitUploadApp {
         ${intervalMarkup}
         <path class="heart-rate-area" d="${areaPath}"></path>
         <path class="heart-rate-line" d="${linePath}"></path>
+        <text class="heart-rate-label" x="${padding.left}" y="${height - 8}">Start</text>
+        <text class="heart-rate-label" x="${width - padding.right}" y="${height - 8}" text-anchor="end">End</text>
+      </svg>
+    `;
+  }
+
+  buildPaceChartMarkup(series, chartMetadata = {}) {
+    const width = 640;
+    const height = 220;
+    const padding = { top: 16, right: 16, bottom: 28, left: 16 };
+    const { totalSamples = series.length, intervalBoundaries = [] } = chartMetadata;
+    const values = series.map((point) => point.paceSecondsPerKilometer);
+    const minValue = Math.min(...values);
+    const maxValue = Math.max(...values);
+    const valueRange = Math.max(maxValue - minValue, 1);
+    const innerWidth = width - padding.left - padding.right;
+    const innerHeight = height - padding.top - padding.bottom;
+
+    const points = series.map((point, index) => {
+      const x = padding.left + (series.length === 1 ? innerWidth / 2 : (index / (series.length - 1)) * innerWidth);
+      const y = padding.top + ((point.paceSecondsPerKilometer - minValue) / valueRange) * innerHeight;
+      return { x, y };
+    });
+
+    const linePath = points
+      .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`)
+      .join(' ');
+    const areaPath = `${linePath} L ${points[points.length - 1].x.toFixed(2)} ${(height - padding.bottom).toFixed(2)} L ${points[0].x.toFixed(2)} ${(height - padding.bottom).toFixed(2)} Z`;
+    const baselineY = height - padding.bottom;
+    const intervalMarkup = this.buildIntervalLineMarkup({
+      intervalBoundaries,
+      totalSamples,
+      width,
+      height,
+      padding,
+      innerHeight,
+    });
+
+    return `
+      <svg class="heart-rate-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Pace chart">
+        <line class="heart-rate-baseline" x1="${padding.left}" y1="${baselineY}" x2="${width - padding.right}" y2="${baselineY}"></line>
+        ${intervalMarkup}
+        <path class="pace-area" d="${areaPath}"></path>
+        <path class="pace-line" d="${linePath}"></path>
         <text class="heart-rate-label" x="${padding.left}" y="${height - 8}">Start</text>
         <text class="heart-rate-label" x="${width - padding.right}" y="${height - 8}" text-anchor="end">End</text>
       </svg>
@@ -618,6 +711,7 @@ ${exportedIntervals}
     this.intervalFormElement.reset();
     this.renderIntervals();
     this.renderHeartRateChart(this.currentHeartRateSeries);
+    this.renderPaceChart(this.currentPaceSeries);
     this.updateIntervalFeedback(`Added interval "${name}".`, false);
     this.intervalNameElement.focus();
   }
@@ -840,6 +934,18 @@ ${exportedIntervals}
     if (seconds === 60) {
       return `${minutes + 1}:00 min/km`;
     }
+
+    return `${minutes}:${String(seconds).padStart(2, '0')} min/km`;
+  }
+
+  formatPaceFromSeconds(secondsPerKilometer) {
+    if (secondsPerKilometer <= 0 || Number.isNaN(secondsPerKilometer)) {
+      return '-';
+    }
+
+    const roundedSeconds = Math.round(secondsPerKilometer);
+    const minutes = Math.floor(roundedSeconds / 60);
+    const seconds = roundedSeconds % 60;
 
     return `${minutes}:${String(seconds).padStart(2, '0')} min/km`;
   }
