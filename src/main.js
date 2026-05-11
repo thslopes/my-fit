@@ -169,6 +169,7 @@ class FitInterpreter {
       boundaries.push({
         name: interval.name,
         sampleIndex: cumulativeSamples,
+        elapsedTotalSeconds: cumulativeSamples,
       });
     }
 
@@ -408,7 +409,7 @@ class FitUploadApp {
   clearHeartRateChart() {
     this.heartRateSectionElement.hidden = true;
     this.heartRateChartElement.innerHTML = '';
-    this.heartRateCaptionElement.textContent = 'No heart rate data available.';
+    this.heartRateCaptionElement.textContent = 'No chart data available.';
   }
 
   clearPaceChart() {
@@ -418,47 +419,37 @@ class FitUploadApp {
   }
 
   renderHeartRateChart(heartRateSeries) {
-    if (heartRateSeries.length === 0) {
+    if (heartRateSeries.length === 0 && this.currentPaceSeries.length === 0) {
       this.clearHeartRateChart();
       return;
     }
 
     const sampledSeries = this.sampleHeartRateSeries(heartRateSeries, 120);
+    const sampledPaceSeries = this.sampleHeartRateSeries(this.currentPaceSeries, 120);
     const intervalBoundaries = this.interpreter instanceof FitInterpreter
       ? this.interpreter.getIntervalBoundaries(heartRateSeries.length)
       : [];
-    const chartMarkup = this.buildHeartRateChartMarkup(sampledSeries, this.trainingZones, {
+    const chartMarkup = this.buildCombinedChartMarkup(sampledSeries, sampledPaceSeries, this.trainingZones, {
       totalSamples: heartRateSeries.length,
       intervalBoundaries,
     });
     const minHeartRate = Math.min(...heartRateSeries.map((point) => point.heartRate));
     const maxHeartRate = Math.max(...heartRateSeries.map((point) => point.heartRate));
+    const paceCaption = this.currentPaceSeries.length > 0
+      ? (() => {
+        const minPace = Math.min(...this.currentPaceSeries.map((point) => point.paceSecondsPerKilometer));
+        const maxPace = Math.max(...this.currentPaceSeries.map((point) => point.paceSecondsPerKilometer));
+        return `Pace ${this.currentPaceSeries.length} samples, ${this.formatPaceFromSeconds(minPace)}-${this.formatPaceFromSeconds(maxPace)}`;
+      })()
+      : 'Pace unavailable';
 
     this.heartRateSectionElement.hidden = false;
     this.heartRateChartElement.innerHTML = chartMarkup;
-    this.heartRateCaptionElement.textContent = `${heartRateSeries.length} samples, ${minHeartRate}-${maxHeartRate} bpm`;
+    this.heartRateCaptionElement.textContent = `Heart Rate ${heartRateSeries.length} samples, ${minHeartRate}-${maxHeartRate} bpm | ${paceCaption}`;
   }
 
   renderPaceChart(paceSeries) {
-    if (paceSeries.length === 0) {
-      this.clearPaceChart();
-      return;
-    }
-
-    const sampledSeries = this.sampleHeartRateSeries(paceSeries, 120);
-    const intervalBoundaries = this.interpreter instanceof FitInterpreter
-      ? this.interpreter.getIntervalBoundaries(paceSeries.length)
-      : [];
-    const chartMarkup = this.buildPaceChartMarkup(sampledSeries, {
-      totalSamples: paceSeries.length,
-      intervalBoundaries,
-    });
-    const minPace = Math.min(...paceSeries.map((point) => point.paceSecondsPerKilometer));
-    const maxPace = Math.max(...paceSeries.map((point) => point.paceSecondsPerKilometer));
-
-    this.paceSectionElement.hidden = false;
-    this.paceChartElement.innerHTML = chartMarkup;
-    this.paceCaptionElement.textContent = `${paceSeries.length} samples, ${this.formatPaceFromSeconds(minPace)}-${this.formatPaceFromSeconds(maxPace)}`;
+    this.clearPaceChart();
   }
 
   sampleHeartRateSeries(series, targetPoints) {
@@ -521,6 +512,114 @@ class FitUploadApp {
         <text class="heart-rate-label" x="${width - padding.right}" y="${height - 8}" text-anchor="end">End</text>
       </svg>
     `;
+  }
+
+  buildCombinedChartMarkup(heartRateSeries, paceSeries, zones = null, chartMetadata = {}) {
+    const width = 640;
+    const height = 360;
+    const padding = { top: 16, right: 16, bottom: 28, left: 16 };
+    const headerHeight = 18;
+    const gap = 22;
+    const plotHeight = ((height - padding.top - padding.bottom - headerHeight * 2 - gap) / 2);
+    const topPlotTop = padding.top + headerHeight;
+    const bottomPlotTop = topPlotTop + plotHeight + gap + headerHeight;
+    const intervalMarkup = this.buildIntervalLineMarkup({
+      intervalBoundaries: chartMetadata.intervalBoundaries ?? [],
+      totalSamples: chartMetadata.totalSamples ?? heartRateSeries.length,
+      width,
+      height,
+      padding: { ...padding, top: topPlotTop, bottom: height - (bottomPlotTop + plotHeight) },
+      innerHeight: (bottomPlotTop + plotHeight) - topPlotTop,
+    });
+    const heartRatePlot = heartRateSeries.length > 0
+      ? this.buildChartPlotMarkup({
+        series: heartRateSeries,
+        valueAccessor: (point) => point.heartRate,
+        width,
+        plotTop: topPlotTop,
+        plotHeight,
+        padding,
+        lineClassName: 'heart-rate-line',
+        areaClassName: 'heart-rate-area',
+        zones,
+      })
+      : '';
+    const pacePlot = paceSeries.length > 0
+      ? this.buildChartPlotMarkup({
+        series: paceSeries,
+        valueAccessor: (point) => point.paceSecondsPerKilometer,
+        width,
+        plotTop: bottomPlotTop,
+        plotHeight,
+        padding,
+        lineClassName: 'pace-line',
+        areaClassName: 'pace-area',
+        invertAxis: true,
+      })
+      : '';
+    const innerWidth = width - padding.left - padding.right;
+    const topBaselineY = topPlotTop + plotHeight;
+    const bottomBaselineY = bottomPlotTop + plotHeight;
+
+    return `
+      <svg class="heart-rate-chart" viewBox="0 0 ${width} ${height}" role="img" aria-label="Heart rate and pace chart">
+        <text class="heart-rate-label" x="${padding.left}" y="${(topPlotTop - 6).toFixed(2)}">Heart Rate</text>
+        <text class="heart-rate-label" x="${padding.left}" y="${(bottomPlotTop - 6).toFixed(2)}">Pace</text>
+        <line class="heart-rate-baseline" x1="${padding.left}" y1="${topBaselineY.toFixed(2)}" x2="${(padding.left + innerWidth).toFixed(2)}" y2="${topBaselineY.toFixed(2)}"></line>
+        <line class="heart-rate-baseline" x1="${padding.left}" y1="${bottomBaselineY.toFixed(2)}" x2="${(padding.left + innerWidth).toFixed(2)}" y2="${bottomBaselineY.toFixed(2)}"></line>
+        ${intervalMarkup}
+        ${heartRatePlot}
+        ${pacePlot}
+        <text class="heart-rate-label" x="${padding.left}" y="${height - 8}">Start</text>
+        <text class="heart-rate-label" x="${width - padding.right}" y="${height - 8}" text-anchor="end">End</text>
+      </svg>
+    `;
+  }
+
+  buildChartPlotMarkup({
+    series,
+    valueAccessor,
+    width,
+    plotTop,
+    plotHeight,
+    padding,
+    lineClassName,
+    areaClassName,
+    zones = null,
+    invertAxis = false,
+  }) {
+    const values = series.map((point) => valueAccessor(point));
+    const minValue = Math.min(...values);
+    const maxValue = Math.max(...values);
+    const valueRange = Math.max(maxValue - minValue, 1);
+    const innerWidth = width - padding.left - padding.right;
+    const points = series.map((point, index) => {
+      const x = padding.left + (series.length === 1 ? innerWidth / 2 : (index / (series.length - 1)) * innerWidth);
+      const ratio = invertAxis
+        ? (valueAccessor(point) - minValue) / valueRange
+        : (maxValue - valueAccessor(point)) / valueRange;
+      const y = plotTop + ratio * plotHeight;
+      return { x, y };
+    });
+    const linePath = points
+      .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x.toFixed(2)} ${point.y.toFixed(2)}`)
+      .join(' ');
+    const baselineY = plotTop + plotHeight;
+    const areaPath = `${linePath} L ${points[points.length - 1].x.toFixed(2)} ${baselineY.toFixed(2)} L ${points[0].x.toFixed(2)} ${baselineY.toFixed(2)} Z`;
+    const zoneMarkup = zones
+      ? this.buildZoneLineMarkup({
+        zones,
+        width,
+        height: plotTop + plotHeight,
+        padding: { ...padding, top: plotTop, bottom: 0 },
+        minValue,
+        maxValue,
+        valueRange,
+        innerHeight: plotHeight,
+      })
+      : '';
+
+    return `${zoneMarkup}<path class="${areaClassName}" d="${areaPath}"></path><path class="${lineClassName}" d="${linePath}"></path>`;
   }
 
   buildPaceChartMarkup(series, chartMetadata = {}) {
@@ -599,9 +698,11 @@ class FitUploadApp {
     return intervalBoundaries
       .map((interval) => {
         const x = padding.left + (interval.sampleIndex / (totalSamples - 1)) * (width - padding.left - padding.right);
+        const labelY = Math.max(padding.top - 6, 12);
 
         return `
           <line class="heart-rate-interval-line" x1="${x.toFixed(2)}" y1="${padding.top}" x2="${x.toFixed(2)}" y2="${(padding.top + innerHeight).toFixed(2)}"></line>
+          <text class="heart-rate-label heart-rate-interval-label" x="${x.toFixed(2)}" y="${labelY.toFixed(2)}" text-anchor="middle">${this.formatSecondsDuration(interval.elapsedTotalSeconds)}</text>
         `;
       })
       .join('');
