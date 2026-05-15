@@ -6,28 +6,28 @@ const TRAINING_ZONES_STORAGE_KEY = 'my-fit-training-zones';
 class FitInterpreter {
   constructor(messages) {
     this.messages = messages;
-    console.log('Messages:', messages);
     this.intervals = [];
+    this.startTime = null;
+    this.endTime = null;
   }
 
   getSummary() {
-    let startTime = null;
-    let endTime = null;
     let summary = null;
 
     for (const message of this.messages) {
+    let endTime = null;
       if (message.event === 'timer' && message.eventType === 'start') {
-        startTime = message.timestamp;
+        this.startTime = message.timestamp;
       }
       if (message.event === 'timer' && message.eventType === 'stopAll') {
-        endTime = message.timestamp;
+        this.endTime = message.timestamp;
       }
       if (message.avgSpeed != null) {
         summary = message;
       }
     }
 
-    return { startTime, endTime, duration: startTime && endTime ? (endTime - startTime) : null, ...summary };
+    return { startTime: this.startTime, endTime: this.endTime, duration: this.startTime && this.endTime ? (this.endTime - this.startTime) : null, ...summary };
   }
 
   setInterval(interval) {
@@ -44,50 +44,73 @@ class FitInterpreter {
 
     let sumHeartRate = 0;
     let maxHeartRate = 0;
+    let previousHeartRate = 0;
 
     let sumEnhancedSpeed = 0;
     let maxEnhancedSpeed = 0;
+    let previousEnhancedSpeed = 0;
 
     let sumCadence = 0;
     let maxCadence = 0;
+    let previousCadence = 0;
 
     let sumStepLength = 0;
     let maxStepLength = 0;
-
+    let previousStepLength = 0;
+    
     for (const message of this.messages) {
+      if (message.type !== 'record') {
+        continue;
+      }
+      recordCount++;
+
       if (message.heartRate != null) {
-        recordCount++;
         sumHeartRate += message.heartRate;
         maxHeartRate = Math.max(maxHeartRate, message.heartRate);
+        previousHeartRate = message.heartRate;
+      } else if (previousHeartRate > 0) {
+        sumHeartRate += previousHeartRate;
       }
 
       if (message.enhancedSpeed != null) {
         sumEnhancedSpeed += message.enhancedSpeed;
         maxEnhancedSpeed = Math.max(maxEnhancedSpeed, message.enhancedSpeed);
+        previousEnhancedSpeed = message.enhancedSpeed;
+      } else if (previousEnhancedSpeed > 0) {
+        sumEnhancedSpeed += previousEnhancedSpeed;
       }
 
       if (message.cadence != null) {
         sumCadence += message.cadence;
         maxCadence = Math.max(maxCadence, message.cadence);
+        previousCadence = message.cadence;
+      } else if (previousCadence > 0) {
+        sumCadence += previousCadence;
       }
 
       if (message.stepLength != null) {
         sumStepLength += message.stepLength;
         maxStepLength = Math.max(maxStepLength, message.stepLength);
+        previousStepLength = message.stepLength;
+      } else if (previousStepLength > 0) {
+        sumStepLength += previousStepLength;
       }
 
-      if (recordCount > intervalFinalSecond) {
+      const elapsedSeconds = message.timestamp && this.startTime ? Math.floor((message.timestamp - this.startTime) / 1000) : null;
+
+      if (elapsedSeconds > intervalFinalSecond) {
+        console.log("oi");
         let currentInterval = this.intervals[currentIntervalIndex];
-        currentInterval.avgHeartRate = sumHeartRate / currentInterval.totalSeconds;
+        currentInterval.avgHeartRate = sumHeartRate / recordCount;
         currentInterval.maxHeartRate = maxHeartRate;
 
-        currentInterval.avgEnhancedSpeed = sumEnhancedSpeed / currentInterval.totalSeconds;
+        currentInterval.avgEnhancedSpeed = sumEnhancedSpeed / recordCount;
         currentInterval.maxEnhancedSpeed = maxEnhancedSpeed;
 
-        currentInterval.avgCadence = sumCadence / currentInterval.totalSeconds;
+        currentInterval.avgCadence = sumCadence / recordCount;
         currentInterval.maxCadence = maxCadence;
 
-        currentInterval.avgStepLength = sumStepLength / currentInterval.totalSeconds;
+        currentInterval.avgStepLength = sumStepLength / recordCount;
         currentInterval.maxStepLength = maxStepLength;
 
         sumHeartRate = 0;
@@ -98,6 +121,7 @@ class FitInterpreter {
         maxCadence = 0;
         sumStepLength = 0;
         maxStepLength = 0;
+        recordCount = 0;
 
         currentIntervalIndex++;
         if (currentIntervalIndex == this.intervals.length) {
@@ -110,7 +134,7 @@ class FitInterpreter {
     if (maxHeartRate > 0) {
       let currentInterval = this.intervals[currentIntervalIndex];
       let totalSeconds = recordCount;
-      for (let i=0; i<this.intervals.length-1; i++) {
+      for (let i = 0; i < this.intervals.length - 1; i++) {
         totalSeconds -= this.intervals[i].totalSeconds;
       }
       currentInterval.avgHeartRate = sumHeartRate / totalSeconds;
@@ -187,6 +211,11 @@ class FitDecoderService {
     }
 
     const { messages, errors } = decoder.read();
+
+    for (let i = 0; i < messages.recordMesgs.length; i++) {
+      const message = messages.recordMesgs[i];
+      message.type = "record";
+    }
 
     if (errors.length > 0) {
       throw new Error(errors[0].message ?? 'The FIT file could not be decoded.');
