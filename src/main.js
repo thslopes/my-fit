@@ -15,7 +15,7 @@ class FitInterpreter {
     let summary = null;
 
     for (const message of this.messages) {
-    let endTime = null;
+      let endTime = null;
       if (message.event === 'timer' && message.eventType === 'start') {
         this.startTime = message.timestamp;
       }
@@ -57,7 +57,7 @@ class FitInterpreter {
     let sumStepLength = 0;
     let maxStepLength = 0;
     let previousStepLength = 0;
-    
+
     for (const message of this.messages) {
       if (message.type !== 'record') {
         continue;
@@ -99,7 +99,6 @@ class FitInterpreter {
       const elapsedSeconds = message.timestamp && this.startTime ? Math.floor((message.timestamp - this.startTime) / 1000) : null;
 
       if (elapsedSeconds > intervalFinalSecond) {
-        console.log("oi");
         let currentInterval = this.intervals[currentIntervalIndex];
         currentInterval.avgHeartRate = sumHeartRate / recordCount;
         currentInterval.maxHeartRate = maxHeartRate;
@@ -131,8 +130,8 @@ class FitInterpreter {
       }
     }
 
-    if (maxHeartRate > 0) {
-      let currentInterval = this.intervals[currentIntervalIndex];
+    if (maxHeartRate > 0 && currentIntervalIndex < this.intervals.length) {
+      let currentInterval = this.intervals[currentIntervalIndex++];
       let totalSeconds = recordCount;
       for (let i = 0; i < this.intervals.length - 1; i++) {
         totalSeconds -= this.intervals[i].totalSeconds;
