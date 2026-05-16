@@ -198,6 +198,46 @@ class FitInterpreter {
 
     return boundaries;
   }
+
+  getTrainingTimePerZone(zones) {
+    if (!zones || Object.values(zones).some((zone) => typeof zone !== 'number')) {
+      return {};
+    }
+
+    const zoneTimes = {
+      z1: { totalSeconds: 0, percent: 0 },
+      z2: { totalSeconds: 0, percent: 0 },
+      z3: { totalSeconds: 0, percent: 0 },
+      z4: { totalSeconds: 0, percent: 0 },
+      z5: { totalSeconds: 0, percent: 0 },
+    };
+
+    const totalSeconds = this.messages.filter((message) => message.heartRate != null).length;
+
+    for (const message of this.messages) {
+      if (message.heartRate == null) {
+        continue;
+      }
+
+      if (message.heartRate < zones.z1) {
+        zoneTimes.z1.totalSeconds += 1;
+      } else if (message.heartRate < zones.z2) {
+        zoneTimes.z2.totalSeconds += 1;
+      } else if (message.heartRate < zones.z3) {
+        zoneTimes.z3.totalSeconds += 1;
+      } else if (message.heartRate < zones.z4) {
+        zoneTimes.z4.totalSeconds += 1;
+      } else {
+        zoneTimes.z5.totalSeconds += 1;
+      }
+    }
+
+    Object.values(zoneTimes).forEach((zone) => {
+      zone.percent = (zone.totalSeconds / totalSeconds) * 100;
+    });
+
+    return zoneTimes;
+  }
 }
 
 class FitDecoderService {
@@ -752,6 +792,10 @@ class FitUploadApp {
     }
     const summary = this.interpreter.getSummary();
     const intervals = this.interpreter.getIntervalsSummary();
+    const zoneTimes = this.interpreter.getTrainingTimePerZone(this.trainingZones) ? Object.entries(this.interpreter.getTrainingTimePerZone(this.trainingZones))
+      .map(([zoneName, zoneData]) => ` - ${zoneName.toUpperCase()}: ${this.formatSecondsDuration(zoneData.totalSeconds)} (${zoneData.percent.toFixed(1)}%)`)
+      .join('\n')
+      : 'No zone data available.';
 
     const exportedIntervals = intervals.length > 0 ? intervals
       .map((interval, index) => `
@@ -803,8 +847,11 @@ class FitUploadApp {
  - Anaerobic Effect: ${summary.totalAnaerobicTrainingEffect}
  - Training Load Peak: ${summary.trainingLoadPeak}
 
-## Intervals
+## Zones
 
+${zoneTimes}
+
+## Intervals
 ${exportedIntervals}
 `
 
