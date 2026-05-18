@@ -133,9 +133,6 @@ class FitInterpreter {
     if (maxHeartRate > 0 && currentIntervalIndex < this.intervals.length) {
       let currentInterval = this.intervals[currentIntervalIndex++];
       let totalSeconds = recordCount;
-      for (let i = 0; i < this.intervals.length - 1; i++) {
-        totalSeconds -= this.intervals[i].totalSeconds;
-      }
       currentInterval.avgHeartRate = sumHeartRate / totalSeconds;
       currentInterval.maxHeartRate = maxHeartRate;
 
@@ -330,6 +327,14 @@ class FitUploadApp {
 
     this.intervalFormElement.addEventListener('submit', (event) => {
       this.handleIntervalSubmit(event);
+    });
+
+    this.intervalSecondsElement.addEventListener('keydown', (event) => {
+      this.handleIntervalSecondsKeydown(event);
+    });
+
+    this.intervalSecondsElement.addEventListener('input', () => {
+      this.handleIntervalSecondsInput();
     });
 
     Object.values(this.zoneInputs).forEach((input) => {
@@ -868,7 +873,7 @@ ${exportedIntervals}
     }
 
     const name = this.intervalNameElement.value.trim();
-    const totalSeconds = Number.parseInt(this.intervalSecondsElement.value, 10);
+    const totalSeconds = this.parseIntervalInput(this.intervalSecondsElement.value);
 
     if (!name) {
       this.updateIntervalFeedback('Enter an interval name.', true);
@@ -876,7 +881,7 @@ ${exportedIntervals}
     }
 
     if (!Number.isInteger(totalSeconds) || totalSeconds <= 0) {
-      this.updateIntervalFeedback('Enter a valid time in seconds.', true);
+      this.updateIntervalFeedback('Enter a valid interval in mm:ss.', true);
       return;
     }
 
@@ -890,6 +895,75 @@ ${exportedIntervals}
     this.renderPaceChart(this.currentPaceSeries);
     this.updateIntervalFeedback(`Added interval "${name}".`, false);
     this.intervalNameElement.focus();
+  }
+
+  handleIntervalSecondsKeydown(event) {
+    if (event.ctrlKey || event.metaKey || event.altKey) {
+      return;
+    }
+
+    if (/^\d$/.test(event.key)) {
+      event.preventDefault();
+      this.shiftIntervalInput(event.key);
+      return;
+    }
+
+    if (event.key === 'Backspace') {
+      event.preventDefault();
+      this.unshiftIntervalInput();
+      return;
+    }
+
+    if (event.key === 'Delete') {
+      event.preventDefault();
+      this.intervalSecondsElement.value = '';
+      return;
+    }
+
+    if (['Tab', 'Enter', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
+      return;
+    }
+
+    event.preventDefault();
+  }
+
+  handleIntervalSecondsInput() {
+    const normalizedValue = this.intervalSecondsElement.value.trim();
+
+    if (normalizedValue === '') {
+      return;
+    }
+
+    if (/^\d+$/.test(normalizedValue)) {
+      this.intervalSecondsElement.value = this.formatIntervalDigits(normalizedValue);
+      this.moveIntervalCursorToEnd();
+      return;
+    }
+
+    const parsedValue = this.parseIntervalInput(normalizedValue);
+
+    if (Number.isInteger(parsedValue)) {
+      this.intervalSecondsElement.value = this.formatSecondsDuration(parsedValue);
+      this.moveIntervalCursorToEnd();
+    }
+  }
+
+  shiftIntervalInput(digit) {
+    const digits = `${this.getIntervalInputDigits()}${digit}`;
+
+    this.intervalSecondsElement.value = this.formatIntervalDigits(digits);
+    this.moveIntervalCursorToEnd();
+  }
+
+  unshiftIntervalInput() {
+    const digits = this.getIntervalInputDigits().slice(0, -1);
+
+    this.intervalSecondsElement.value = this.formatIntervalDigits(digits);
+    this.moveIntervalCursorToEnd();
+  }
+
+  getIntervalInputDigits() {
+    return this.intervalSecondsElement.value.replace(/\D/g, '');
   }
 
   clearIntervals() {
@@ -1088,6 +1162,44 @@ ${exportedIntervals}
 
   formatSecondsDuration(durationInSeconds) {
     return this.formatDuration(durationInSeconds * 1000);
+  }
+
+  formatIntervalDigits(value) {
+    const digits = value.replace(/\D/g, '');
+
+    if (digits === '') {
+      return '';
+    }
+
+    const normalizedDigits = digits.replace(/^0+(?=\d)/, '');
+    const seconds = normalizedDigits.slice(-2).padStart(2, '0');
+    const minutes = normalizedDigits.length > 2 ? normalizedDigits.slice(0, -2) : '0';
+
+    return `${minutes}:${seconds}`;
+  }
+
+  parseIntervalInput(value) {
+    const normalizedValue = value.trim();
+    const match = /^(\d+):(\d{2})$/.exec(normalizedValue);
+
+    if (match == null) {
+      return Number.NaN;
+    }
+
+    const minutes = Number.parseInt(match[1], 10);
+    const seconds = Number.parseInt(match[2], 10);
+
+    if (seconds >= 60) {
+      return Number.NaN;
+    }
+
+    return (minutes * 60) + seconds;
+  }
+
+  moveIntervalCursorToEnd() {
+    const cursorPosition = this.intervalSecondsElement.value.length;
+
+    this.intervalSecondsElement.setSelectionRange(cursorPosition, cursorPosition);
   }
 
   formatDistance(distanceInMeters) {
