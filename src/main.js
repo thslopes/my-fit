@@ -16,7 +16,7 @@ class FitInterpreter {
 
     for (const message of this.messages) {
       let endTime = null;
-      if (message.event === 'timer' && message.eventType === 'start') {
+      if (message.event === 'timer' && message.eventType === 'start' && this.startTime == null) {
         this.startTime = message.timestamp;
       }
       if (message.event === 'timer' && message.eventType === 'stopAll') {
